@@ -1,0 +1,10 @@
+txt
+
+fastapi
+uvicorn[standard]
+SQLAlchemy>=2.0
+PyMySQL
+pydantic>=2
+python-dotenv
+numpy
+openai>=1.30.0
