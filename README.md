@@ -2,7 +2,8 @@
 ```bash
 # 1) Create & activate venv
 python -m venv .venv
-.\.venv\Scripts\activate
+.\.venv\Scripts\activate         # <- windows ->
+source .venv/bin/activate        # <— mac/linux activate
 # 2) Install deps
 pip install -r requirements.txt
 # 3) Copy .env.example to .env and adjust DATABASE_URL (if needed)
@@ -16,7 +17,9 @@ python -m src.app.seed_data
 # Start service
 ```bash
 # 1) from project root
-.\.venv\Scripts\activate
+.\.venv\Scripts\activate         # <- windows ->
+source .venv/bin/activate        # <— mac/linux activate
+
 # 5) (Make sure MySQL and .env are set)
 uvicorn src.app.api:app --reload --port 8000
 ```
