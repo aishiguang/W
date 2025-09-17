@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Witcher III Petri-Net Explorer</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: radial-gradient(circle at top, #101b33, #050913 65%);
+      color: #e3ecff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 32px clamp(24px, 6vw, 96px) 16px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: clamp(28px, 5vw, 42px);
+      letter-spacing: 0.02em;
+    }
+    header p {
+      margin: 12px 0 0;
+      max-width: 720px;
+      color: #9cb5ff;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    main {
+      flex: 1;
+      padding: 0 clamp(24px, 6vw, 96px) 48px;
+      display: flex;
+      flex-direction: column;
+    }
+    .graph-shell {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      align-items: flex-start;
+    }
+    #graph {
+      flex: 1 1 640px;
+      min-height: 560px;
+      background: linear-gradient(145deg, rgba(14,23,39,0.92), rgba(12,19,33,0.88));
+      border-radius: 18px;
+      box-shadow: 0 24px 60px rgba(6, 12, 24, 0.55);
+      position: relative;
+      overflow: hidden;
+    }
+    #graph svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #side-panel {
+      flex: 0 0 clamp(260px, 22vw, 320px);
+      background: rgba(12, 20, 36, 0.86);
+      border-radius: 18px;
+      padding: 20px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      border: 1px solid rgba(76, 102, 159, 0.18);
+      box-shadow: inset 0 1px 0 rgba(113, 153, 255, 0.12);
+    }
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #9cb5ff;
+      letter-spacing: 0.02em;
+    }
+    .legend span::before {
+      content: "";
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .legend .place::before { background: #5b8dff; }
+    .legend .transition::before { background: #f6c177; }
+    #details {
+      background: rgba(8, 15, 32, 0.6);
+      border-radius: 14px;
+      padding: 16px 18px;
+      min-height: 180px;
+      border: 1px solid rgba(85, 125, 210, 0.16);
+      box-shadow: inset 0 1px 0 rgba(123, 160, 255, 0.08);
+    }
+    #details h2 {
+      margin: 0 0 10px;
+      font-size: 20px;
+      color: #eaf1ff;
+    }
+    #details .meta {
+      margin: 0 0 12px;
+      font-size: 13px;
+      color: #8ea5e8;
+    }
+    #details p {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #b6c6ff;
+    }
+    #details code {
+      background: rgba(16, 30, 58, 0.8);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: #f7f0ff;
+    }
+    .status {
+      font-size: 13px;
+      color: #9cb5ff;
+    }
+    .ask-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: rgba(10, 18, 34, 0.75);
+      border-radius: 14px;
+      padding: 16px 18px;
+      border: 1px solid rgba(85, 125, 210, 0.16);
+      box-shadow: inset 0 1px 0 rgba(123, 160, 255, 0.08);
+    }
+    .ask-panel h3 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+      color: #f6c177;
+      text-transform: uppercase;
+    }
+    .ask-panel textarea {
+      width: 100%;
+      min-height: 70px;
+      resize: vertical;
+      border-radius: 8px;
+      padding: 10px 12px;
+      border: 1px solid rgba(120, 145, 210, 0.35);
+      background: rgba(6, 12, 24, 0.85);
+      color: #e3ecff;
+      font-family: inherit;
+      font-size: 14px;
+    }
+    .ask-panel button {
+      align-self: flex-end;
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: none;
+      background: linear-gradient(135deg, #f6c177, #f7d69d);
+      color: #1a1e2c;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    .ask-panel button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 18px rgba(246, 193, 119, 0.35);
+    }
+    .ask-panel button:disabled {
+      opacity: 0.6;
+      cursor: progress;
+      transform: none;
+      box-shadow: none;
+    }
+    .ask-answer {
+      font-size: 14px;
+      line-height: 1.5;
+      color: #d8e0ff;
+      white-space: pre-wrap;
+    }
+    .ask-sources {
+      margin-top: 6px;
+      font-size: 12px;
+      color: rgba(246, 193, 119, 0.85);
+    }
+    .ask-error {
+      font-size: 13px;
+      color: #ff9c9c;
+    }
+    .footer-note {
+      margin-top: auto;
+      font-size: 12px;
+      color: rgba(156, 181, 255, 0.6);
+      line-height: 1.4;
+    }
+    .footer-note a {
+      color: #f6c177;
+      text-decoration: none;
+    }
+    .footer-note a:hover {
+      text-decoration: underline;
+    }
+    @media (max-width: 960px) {
+      main { padding-bottom: 64px; }
+      #side-panel { flex: 1 1 100%; }
+    }
+    .link {
+      stroke: rgba(157, 171, 204, 0.68);
+      stroke-width: 1.6px;
+      fill: none;
+    }
+    .link.active {
+      stroke: #f6c177;
+      stroke-width: 2.4px;
+    }
+    .choice-link {
+      stroke: rgba(246, 193, 119, 0.55);
+      stroke-width: 1.4px;
+      stroke-dasharray: 6 4;
+      fill: none;
+      pointer-events: none;
+    }
+    .choice-link.active {
+      stroke: #f6c177;
+      stroke-width: 2.2px;
+    }
+    .node-shape {
+      stroke: #020610;
+      stroke-width: 2px;
+      cursor: pointer;
+      transition: stroke 0.2s ease, fill 0.2s ease;
+    }
+    .node-shape.place { fill: #5b8dff; }
+    .node-shape.transition { fill: #f6c177; }
+    .node-shape.selected-shape {
+      stroke: #ffffff !important;
+      stroke-width: 3px !important;
+      filter: drop-shadow(0 0 8px rgba(103, 187, 255, 0.6));
+    }
+    .node-shape.choice-peer-shape {
+      stroke: #f6c177;
+      stroke-width: 3px;
+      stroke-dasharray: 4 2;
+    }
+    .node text {
+      pointer-events: none;
+      fill: rgba(210, 225, 255, 0.92);
+      font-size: 11px;
+      letter-spacing: 0.01em;
+      text-shadow: 0 1px 3px rgba(2, 6, 16, 0.8);
+    }
+    .choice-groups {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .choice-group {
+      background: rgba(16, 24, 44, 0.7);
+      border-radius: 10px;
+      padding: 10px 12px;
+      border: 1px solid rgba(246, 193, 119, 0.18);
+    }
+    .choice-group-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #f6c177;
+      margin: 0 0 6px;
+    }
+    .choice-group-note {
+      font-size: 12px;
+      color: rgba(246, 193, 119, 0.8);
+      margin-bottom: 6px;
+    }
+    .choice-group ul {
+      list-style: disc;
+      margin: 0 0 0 18px;
+      padding: 0;
+    }
+    .choice-group li {
+      font-size: 13px;
+      color: #d8e0ff;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Witcher III Story Petri-Net</h1>
+    <p>Explore the causal graph that drives the storyline-aware retrieval. Places capture world states; transitions capture pivotal quests and choices. Drag to rearrange, hover for notes, and click nodes to inspect details.</p>
+  </header>
+  <main>
+    <div class="graph-shell">
+      <div id="graph"></div>
+      <aside id="side-panel">
+        <div class="legend">
+          <span class="place">Place (world state)</span>
+          <span class="transition">Transition (event/choice)</span>
+        </div>
+        <div id="details">
+          <div class="status">Loading graph...</div>
+        </div>
+        <form id="ask-form" class="ask-panel">
+          <h3>Ask the Story Graph</h3>
+          <textarea id="ask-input" placeholder="e.g. Who joins the Battle of Kaer Morhen?" required></textarea>
+          <button type="submit">Ask</button>
+          <div id="ask-error" class="ask-error" aria-live="polite"></div>
+          <div id="ask-answer" class="ask-answer"></div>
+          <div id="ask-sources" class="ask-sources"></div>
+        </form>
+        <div class="footer-note">Powered by FastAPI &amp; D3.js -- data served from <code>/petri/graph/data</code>.</div>
+      </aside>
+    </div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script type="module" src="/static/dist/petri.js"></script>
+</body>
+</html>

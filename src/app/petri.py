@@ -123,3 +123,83 @@ def bfs_neighborhood(
                     dist_p[p] = dist_t[t] + 1
                     fp.append(p)
     return {"place": dist_p, "transition": dist_t}
+
+
+def get_petri_graph(db: Session) -> dict:
+    places = db.scalars(select(Place)).all()
+    transitions = db.scalars(select(Transition)).all()
+    arcs = db.scalars(select(Arc)).all()
+
+    place_map = {p.id: p for p in places}
+    trans_map = {t.id: t for t in transitions}
+
+    nodes = []
+    for p in places:
+        nodes.append({
+            "id": f"place-{p.id}",
+            "db_id": p.id,
+            "key": p.key,
+            "label": p.name,
+            "type": "place",
+            "description": p.description or ""
+        })
+    for t in transitions:
+        nodes.append({
+            "id": f"transition-{t.id}",
+            "db_id": t.id,
+            "key": t.key,
+            "label": t.name,
+            "type": "transition",
+            "description": t.description or "",
+            "exclusive_group": t.exclusive_group
+        })
+
+    edges = []
+    pt_by_place: dict[int, list[Arc]] = defaultdict(list)
+    for a in arcs:
+        if a.source_place_id and a.target_transition_id:
+            source_id = f"place-{a.source_place_id}"
+            target_id = f"transition-{a.target_transition_id}"
+            source_key = place_map.get(a.source_place_id).key if a.source_place_id in place_map else None
+            target_key = trans_map.get(a.target_transition_id).key if a.target_transition_id in trans_map else None
+            kind = "place_to_transition"
+            pt_by_place[a.source_place_id].append(a)
+        elif a.source_transition_id and a.target_place_id:
+            source_id = f"transition-{a.source_transition_id}"
+            target_id = f"place-{a.target_place_id}"
+            source_key = trans_map.get(a.source_transition_id).key if a.source_transition_id in trans_map else None
+            target_key = place_map.get(a.target_place_id).key if a.target_place_id in place_map else None
+            kind = "transition_to_place"
+        else:
+            continue
+        edges.append({
+            "id": f"arc-{a.id}",
+            "source": source_id,
+            "target": target_id,
+            "weight": a.weight,
+            "kind": kind,
+            "source_key": source_key,
+            "target_key": target_key
+        })
+
+    exclusive_map: dict[str, list[Transition]] = defaultdict(list)
+    for t in transitions:
+        if t.exclusive_group:
+            exclusive_map[t.exclusive_group].append(t)
+
+    choice_groups = []
+    for group_key, group_trans in exclusive_map.items():
+        if len(group_trans) < 2:
+            continue
+        trans_ids = [f"transition-{t.id}" for t in group_trans]
+        choice_groups.append({
+            "id": f"exclusive-{group_key}",
+            "place_id": None,
+            "place_key": None,
+            "place_label": None,
+            "transition_ids": trans_ids,
+            "transition_keys": [t.key for t in group_trans],
+            "exclusive_group": group_key
+        })
+
+    return {"nodes": nodes, "edges": edges, "choices": choice_groups}

@@ -17,6 +17,7 @@ class Transition(Base):
     key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text())
+    exclusive_group: Mapped[str | None] = mapped_column(String(64), index=True)
 
 class Arc(Base):
     """

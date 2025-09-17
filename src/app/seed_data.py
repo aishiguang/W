@@ -13,12 +13,29 @@ def upsert_place(db: Session, key: str, name: str, desc: str = "") -> Place:
         db.flush()
     return p
 
-def upsert_transition(db: Session, key: str, name: str, desc: str = "") -> Transition:
+def upsert_transition(
+    db: Session,
+    key: str,
+    name: str,
+    desc: str = "",
+    *,
+    exclusive_group: str | None = None
+) -> Transition:
     t = db.scalar(select(Transition).where(Transition.key == key))
     if not t:
-        t = Transition(key=key, name=name, description=desc)
+        t = Transition(key=key, name=name, description=desc, exclusive_group=exclusive_group)
         db.add(t)
         db.flush()
+    else:
+        updated = False
+        if desc and t.description != desc:
+            t.description = desc
+            updated = True
+        if exclusive_group is not None and t.exclusive_group != exclusive_group:
+            t.exclusive_group = exclusive_group
+            updated = True
+        if updated:
+            db.add(t)
     return t
 
 def add_arc_pt(db: Session, p: Place, t: Transition, w: int = 1):
@@ -56,10 +73,20 @@ def seed_story_graph(db: Session):
                                       "Choose ritual (Lubberkin) or kill the botchling.")
 
     # Whispering Hillock major branch
-    t_wh_free = upsert_transition(db, "free_whispering_hillock", "Free the spirit under the Hillock",
-                                  "Release the spirit; consequences ripple into Anna/Bloody Baron line and Crookback Bog.")
-    t_wh_kill = upsert_transition(db, "kill_whispering_hillock", "Kill the spirit under the Hillock",
-                                  "Kill the spirit; different consequences in Crookback Bog.")
+    t_wh_free = upsert_transition(
+        db,
+        "free_whispering_hillock",
+        "Free the spirit under the Hillock",
+        "Release the spirit; consequences ripple into Anna/Bloody Baron line and Crookback Bog.",
+        exclusive_group="whispering_hillock"
+    )
+    t_wh_kill = upsert_transition(
+        db,
+        "kill_whispering_hillock",
+        "Kill the spirit under the Hillock",
+        "Kill the spirit; different consequences in Crookback Bog.",
+        exclusive_group="whispering_hillock"
+    )
 
     p_spirit_freed = upsert_place(db, "spirit_freed", "Whispering Hillock — Spirit freed",
                                   "Some orphans may live, but Anna is cursed harsher; Baron’s line worsens.")
@@ -102,24 +129,74 @@ def seed_story_graph(db: Session):
     add_arc_pt(db, p_fm_active, t_to_novigrad);        add_arc_tp(db, t_to_novigrad, p_novi_main)
 
     # Whoreson Junior outcome (not world-scale, but referenced by FAQs)
-    t_whoreson_spare = upsert_transition(db, "spare_whoreson", "Spare Whoreson Junior")
-    t_whoreson_kill = upsert_transition(db, "kill_whoreson", "Kill Whoreson Junior")
+    t_whoreson_spare = upsert_transition(
+        db,
+        "spare_whoreson",
+        "Spare Whoreson Junior",
+        exclusive_group="whoreson_outcome"
+    )
+    t_whoreson_kill = upsert_transition(
+        db,
+        "kill_whoreson",
+        "Kill Whoreson Junior",
+        exclusive_group="whoreson_outcome"
+    )
     p_whoreson_spared = upsert_place(db, "whoreson_spared", "Whoreson spared", "Minor later scenes differ.")
     p_whoreson_killed = upsert_place(db, "whoreson_killed", "Whoreson killed", "Minor later scenes differ.")
     add_arc_pt(db, p_novi_main, t_whoreson_spare);      add_arc_tp(db, t_whoreson_spare, p_whoreson_spared)
     add_arc_pt(db, p_novi_main, t_whoreson_kill);       add_arc_tp(db, t_whoreson_kill, p_whoreson_killed)
 
     # Triss — help mages or not
-    t_help_triss = upsert_transition(db, "help_triss_escape", "Help Triss evacuate mages",
-                                     "Aid mages at the docks; affects later scenes.")
-    t_refuse_triss = upsert_transition(db, "refuse_triss", "Refuse to help Triss",
-                                       "Refuse aid; fewer allies and scenes shift.")
+    t_help_triss = upsert_transition(
+        db,
+        "help_triss_escape",
+        "Help Triss evacuate mages",
+        "Aid mages at the docks; affects later scenes.",
+        exclusive_group="triss_docks"
+    )
+    t_refuse_triss = upsert_transition(
+        db,
+        "refuse_triss",
+        "Refuse to help Triss",
+        "Refuse aid; fewer allies and scenes shift.",
+        exclusive_group="triss_docks"
+    )
     p_mages_saved = upsert_place(db, "mages_evacuated", "Novigrad mages evacuated",
                                  "Mages escape Novigrad; contributes to later tone/allies.")
     p_mages_abandoned = upsert_place(db, "mages_abandoned", "Novigrad mages abandoned",
                                      "Darker Novigrad; fewer mage allies.")
     add_arc_pt(db, p_novi_main, t_help_triss);          add_arc_tp(db, t_help_triss, p_mages_saved)
     add_arc_pt(db, p_novi_main, t_refuse_triss);        add_arc_tp(db, t_refuse_triss, p_mages_abandoned)
+
+    # Dandelion rescue leads to broader Novigrad support network
+    p_dandelion_rescued = upsert_place(
+        db,
+        "dandelion_rescued",
+        "Dandelion rescued",
+        "You pulled Dandelion out of Oxenfurt prison; the cabaret returns and friends rally behind you."
+    )
+    t_rescue_dandelion = upsert_transition(
+        db,
+        "rescue_dandelion",
+        "Rescue Dandelion",
+        "Free Dandelion during 'A Poet Under Pressure'."
+    )
+    add_arc_pt(db, p_novi_main, t_rescue_dandelion);    add_arc_tp(db, t_rescue_dandelion, p_dandelion_rescued)
+
+    # Lodge maneuvering — Philippa and the mages influence Redanian politics
+    p_philippa_freed = upsert_place(
+        db,
+        "philippa_freed",
+        "Philippa at large",
+        "Philippa Eilhart escaped and is plotting against Radovid."
+    )
+    t_release_philippa = upsert_transition(
+        db,
+        "release_philippa",
+        "Free Philippa Eilhart",
+        "You aided Philippa during the Blindingly Obvious / Final Preparation beats."
+    )
+    add_arc_pt(db, p_novi_main, t_release_philippa);    add_arc_tp(db, t_release_philippa, p_philippa_freed)
 
     # === Skellige: Lord of Undvik, King’s Gambit (Cerys vs Hjalmar) ===
     p_skellige_open = upsert_place(db, "skellige_open", "Skellige — Mainline open",
@@ -128,10 +205,20 @@ def seed_story_graph(db: Session):
     add_arc_pt(db, p_novi_main, t_to_skellige);         add_arc_tp(db, t_to_skellige, p_skellige_open)
 
     # King’s Gambit outcome
-    t_crown_cerys = upsert_transition(db, "crown_cerys", "Crown Cerys an Craite",
-                                      "Cerys becomes Queen; stability improves across Skellige.")
-    t_crown_hjalmar = upsert_transition(db, "crown_hjalmar", "Crown Hjalmar an Craite",
-                                        "Hjalmar becomes King; more warlike tone.")
+    t_crown_cerys = upsert_transition(
+        db,
+        "crown_cerys",
+        "Crown Cerys an Craite",
+        "Cerys becomes Queen; stability improves across Skellige.",
+        exclusive_group="skellige_succession"
+    )
+    t_crown_hjalmar = upsert_transition(
+        db,
+        "crown_hjalmar",
+        "Crown Hjalmar an Craite",
+        "Hjalmar becomes King; more warlike tone.",
+        exclusive_group="skellige_succession"
+    )
     p_cerys_queen = upsert_place(db, "cerys_queen", "Cerys crowned Queen", "Stable Skellige outcome.")
     p_hjalmar_king = upsert_place(db, "hjalmar_king", "Hjalmar crowned King", "More martial Skellige.")
     add_arc_pt(db, p_skellige_open, t_crown_cerys);     add_arc_tp(db, t_crown_cerys, p_cerys_queen)
@@ -140,10 +227,20 @@ def seed_story_graph(db: Session):
     # === Keira Metz sub-branch (affects Battle of Kaer Morhen) ===
     p_keira_unknown = upsert_place(db, "keira_unknown", "Keira Metz — unresolved",
                                    "After ‘Hunting a Witch’/‘Wandering in the Dark’.")
-    t_send_keira_kaer = upsert_transition(db, "send_keira_to_kaer_morhen", "Send Keira to Kaer Morhen",
-                                          "Persuade Keira to help at Kaer Morhen (lives, aids battle).")
-    t_keira_killed = upsert_transition(db, "keira_killed", "Kill Keira Metz",
-                                       "Confrontation ends in her death; she won’t help later.")
+    t_send_keira_kaer = upsert_transition(
+        db,
+        "send_keira_to_kaer_morhen",
+        "Send Keira to Kaer Morhen",
+        "Persuade Keira to help at Kaer Morhen (lives, aids battle).",
+        exclusive_group="keira_outcome"
+    )
+    t_keira_killed = upsert_transition(
+        db,
+        "keira_killed",
+        "Kill Keira Metz",
+        "Confrontation ends in her death; she won’t help later.",
+        exclusive_group="keira_outcome"
+    )
     p_keira_ally = upsert_place(db, "keira_will_help", "Keira will fight at Kaer Morhen",
                                 "Alive and recruited.")
     p_keira_dead = upsert_place(db, "keira_dead", "Keira dead", "Unavailable for later battle.")
@@ -191,19 +288,107 @@ def seed_story_graph(db: Session):
     # === Global politics (Radovid/Dijkstra) affects epilogues/world tone ===
     p_radovid_alive = upsert_place(db, "radovid_alive", "Radovid alive", "Redania dominance persists.")
     p_radovid_dead = upsert_place(db, "radovid_dead", "Radovid assassinated", "Nilfgaard likely prevails.")
-    t_kill_radovid = upsert_transition(db, "kill_radovid", "Assassinate Radovid",
-                                       "Side with Roche/Thaler/Ves; opens Dijkstra confrontation.")
-    t_spare_radovid = upsert_transition(db, "spare_radovid", "Spare Radovid", "Redania continues under Radovid.")
+    t_kill_radovid = upsert_transition(
+        db,
+        "kill_radovid",
+        "Assassinate Radovid",
+        "Side with Roche/Thaler/Ves; opens Dijkstra confrontation.",
+        exclusive_group="radovid_fate"
+    )
+    t_spare_radovid = upsert_transition(
+        db,
+        "spare_radovid",
+        "Spare Radovid",
+        "Redania continues under Radovid.",
+        exclusive_group="radovid_fate"
+    )
     add_arc_pt(db, p_novi_main, t_kill_radovid);        add_arc_tp(db, t_kill_radovid, p_radovid_dead)
     add_arc_pt(db, p_novi_main, t_spare_radovid);       add_arc_tp(db, t_spare_radovid, p_radovid_alive)
 
     # Dijkstra aftermath (simplified)
     p_dijkstra_rules = upsert_place(db, "dijkstra_rules", "Dijkstra seizes power", "If you side with him after Radovid.")
     p_roche_survives = upsert_place(db, "roche_survives", "Roche survives", "If you oppose Dijkstra’s coup.")
-    t_side_dijkstra = upsert_transition(db, "side_with_dijkstra", "Side with Dijkstra")
-    t_stop_dijkstra = upsert_transition(db, "stop_dijkstra", "Oppose Dijkstra")
+    t_side_dijkstra = upsert_transition(
+        db,
+        "side_with_dijkstra",
+        "Side with Dijkstra",
+        exclusive_group="dijkstra_coup"
+    )
+    t_stop_dijkstra = upsert_transition(
+        db,
+        "stop_dijkstra",
+        "Oppose Dijkstra",
+        exclusive_group="dijkstra_coup"
+    )
     add_arc_pt(db, p_radovid_dead, t_side_dijkstra);    add_arc_tp(db, t_side_dijkstra, p_dijkstra_rules)
     add_arc_pt(db, p_radovid_dead, t_stop_dijkstra);    add_arc_tp(db, t_stop_dijkstra, p_roche_survives)
+
+    # Additional ally toggles to flavor the Battle of Kaer Morhen
+    p_roche_commits = upsert_place(db, "roche_commits", "Roche & Ves join",
+                                   "Temerian guerrillas reinforce Kaer Morhen if you help them.")
+    t_rally_roche = upsert_transition(db, "rally_roche", "Recruit Roche & Ves",
+                                      "Complete 'An Army of Temeria' in their favor.")
+    add_arc_pt(db, p_roche_survives, t_rally_roche);    add_arc_tp(db, t_rally_roche, p_roche_commits)
+    add_arc_pt(db, p_roche_commits, t_sum_allies)
+
+    p_zoltan_ready = upsert_place(db, "zoltan_ready", "Zoltan ready for battle",
+                                  "Zoltan chips in once Dandelion is safe and preparations begin.")
+    t_call_zoltan = upsert_transition(db, "call_zoltan", "Enlist Zoltan",
+                                      "Cue Zoltan for Kaer Morhen after rescuing Dandelion.")
+    add_arc_pt(db, p_dandelion_rescued, t_call_zoltan); add_arc_tp(db, t_call_zoltan, p_zoltan_ready)
+    add_arc_pt(db, p_zoltan_ready, t_sum_allies)
+
+    p_letho_returns = upsert_place(db, "letho_returns", "Letho joins",
+                                   "If spared in Witcher 2 / 'Ghosts of the Past', he helps the defense.")
+    t_spare_letho = upsert_transition(db, "spare_letho", "Spare Letho",
+                                      "Outcome of 'Ghosts of the Past' keeps Letho alive and willing to assist.")
+    add_arc_pt(db, p_fm_active, t_spare_letho);         add_arc_tp(db, t_spare_letho, p_letho_returns)
+    add_arc_pt(db, p_letho_returns, t_sum_allies)
+
+    p_ermion_supports = upsert_place(db, "ermion_supports", "Ermion sends druid aid",
+                                     "Convince Ermion during 'The Lord of Undvik'/Skellige arc.")
+    t_convince_ermion = upsert_transition(db, "convince_ermion", "Convince Ermion",
+                                          "Earn Ermion's support for the Wild Hunt battle.")
+    add_arc_pt(db, p_skellige_open, t_convince_ermion); add_arc_tp(db, t_convince_ermion, p_ermion_supports)
+    add_arc_pt(db, p_ermion_supports, t_sum_allies)
+
+    # Broad war outcome states — who ends up ruling the North?
+    p_nilfgaard_rules = upsert_place(db, "nilfgaard_rules_north", "Nilfgaard wins the war",
+                                     "Nilfgaardian peace settles across the North.")
+    p_redania_resurgent = upsert_place(db, "redania_resurgent", "Redania ascendant",
+                                       "Dijkstra/Redania consolidate control after the coup.")
+    p_war_stalemate = upsert_place(db, "northern_war_stalemate", "Northern war stalemate",
+                                   "If Radovid survives, the war drags on without decisive victory.")
+
+    t_nilfgaard_prevails = upsert_transition(
+        db,
+        "nilfgaard_prevails",
+        "Nilfgaard prevails",
+        "Radovid falls and Roche/Vernon support Nilfgaard's peace deal.",
+        exclusive_group="northern_war_outcome"
+    )
+    t_redania_resurgent = upsert_transition(
+        db,
+        "redania_resurgent_transition",
+        "Redania resurges",
+        "Back Dijkstra's coup; Redania rebuilds without Radovid.",
+        exclusive_group="northern_war_outcome"
+    )
+    t_war_drags = upsert_transition(
+        db,
+        "war_stalemate",
+        "War remains unresolved",
+        "Spare Radovid so the war continues bitterly.",
+        exclusive_group="northern_war_outcome"
+    )
+
+    add_arc_pt(db, p_radovid_dead, t_nilfgaard_prevails)
+    add_arc_pt(db, p_roche_survives, t_nilfgaard_prevails)
+    add_arc_tp(db, t_nilfgaard_prevails, p_nilfgaard_rules)
+
+    add_arc_pt(db, p_dijkstra_rules, t_redania_resurgent); add_arc_tp(db, t_redania_resurgent, p_redania_resurgent)
+
+    add_arc_pt(db, p_radovid_alive, t_war_drags);       add_arc_tp(db, t_war_drags, p_war_stalemate)
 
     # === Ciri fate determinants (abstracted as toggle places via micro-choices) ===
     # We model them as cumulative morale/agency toggles to help the RAG reason about outcomes.
@@ -230,8 +415,77 @@ def seed_story_graph(db: Session):
     # Wire ending influences
     add_arc_pt(db, p_final, t_epilogue)
     add_arc_pt(db, p_ciri_confident, t_epilogue);       add_arc_tp(db, t_epilogue, p_ciri_witcher)
-    add_arc_pt(db, p_radovid_dead, t_epilogue);         add_arc_tp(db, t_epilogue, p_ciri_empress)
+    add_arc_pt(db, p_nilfgaard_rules, t_epilogue);      add_arc_tp(db, t_epilogue, p_ciri_empress)
     add_arc_pt(db, p_ciri_shaken, t_epilogue);          add_arc_tp(db, t_epilogue, p_ciri_dies)
+    add_arc_pt(db, p_war_stalemate, t_epilogue);        add_arc_tp(db, t_epilogue, p_ciri_dies)
+
+    # === Hearts of Stone DLC ===
+    p_hearts_active = upsert_place(db, "hearts_of_stone_active", "Hearts of Stone active",
+                                   "Contract with Olgierd von Everec is underway.")
+    t_start_hearts = upsert_transition(db, "start_hearts_of_stone", "Begin Hearts of Stone",
+                                       "Accept the Ofieri contract and meet Olgierd.")
+    add_arc_pt(db, p_novi_main, t_start_hearts);        add_arc_tp(db, t_start_hearts, p_hearts_active)
+
+    p_olgierd_free = upsert_place(db, "olgierd_free", "Olgierd freed from pact",
+                                  "You sided against Gaunter O'Dimm and saved Olgierd's soul.")
+    p_gaunter_claims = upsert_place(db, "gaunter_claims_soul", "Gaunter claims Olgierd",
+                                    "Let Gaunter O'Dimm take the prize; Olgierd is lost.")
+    t_side_with_olgierd = upsert_transition(
+        db,
+        "side_with_olgierd",
+        "Side with Olgierd",
+        "Solve Gaunter's riddle and free Olgierd.",
+        exclusive_group="hearts_of_stone_final"
+    )
+    t_side_with_gaunter = upsert_transition(
+        db,
+        "side_with_gaunter",
+        "Side with Gaunter O'Dimm",
+        "Refuse to intervene; Gaunter wins.",
+        exclusive_group="hearts_of_stone_final"
+    )
+    add_arc_pt(db, p_hearts_active, t_side_with_olgierd); add_arc_tp(db, t_side_with_olgierd, p_olgierd_free)
+    add_arc_pt(db, p_hearts_active, t_side_with_gaunter); add_arc_tp(db, t_side_with_gaunter, p_gaunter_claims)
+
+    p_runesmith_unlocked = upsert_place(db, "runesmith_unlocked", "Ofieri runewright unlocked",
+                                        "You invested in the runewright upgrades.")
+    t_upgrade_runesmith = upsert_transition(db, "upgrade_runesmith", "Fund the runewright",
+                                            "Spend crowns to unlock runewright enchantments.")
+    add_arc_pt(db, p_hearts_active, t_upgrade_runesmith); add_arc_tp(db, t_upgrade_runesmith, p_runesmith_unlocked)
+
+    # === Blood and Wine DLC ===
+    p_baw_active = upsert_place(db, "blood_and_wine_active", "Blood and Wine active",
+                                "Summoned to Toussaint to face the Beast of Beauclair.")
+    t_to_toussaint = upsert_transition(db, "to_toussaint", "Travel to Toussaint",
+                                       "Begin Blood and Wine by meeting Duchess Anna Henrietta.")
+    add_arc_pt(db, p_final, t_to_toussaint);            add_arc_tp(db, t_to_toussaint, p_baw_active)
+
+    p_syanna_redeemed = upsert_place(db, "syanna_redeemed", "Syanna forgiven",
+                                     "Save Syanna and reconcile the sisters.")
+    p_syanna_dead = upsert_place(db, "syanna_dead", "Syanna executed",
+                                 "Fail to heal the rift, leading to Syanna's death.")
+    t_redeem_syanna = upsert_transition(
+        db,
+        "redeem_syanna",
+        "Redeem Syanna",
+        "Complete 'Beyond Hill and Dale' diplomatically and present the ribbon.",
+        exclusive_group="blood_and_wine_syanna"
+    )
+    t_fail_syanna = upsert_transition(
+        db,
+        "fail_syanna",
+        "Fail Syanna",
+        "Miss the ribbon or accuse her, causing tragedy.",
+        exclusive_group="blood_and_wine_syanna"
+    )
+    add_arc_pt(db, p_baw_active, t_redeem_syanna);      add_arc_tp(db, t_redeem_syanna, p_syanna_redeemed)
+    add_arc_pt(db, p_baw_active, t_fail_syanna);        add_arc_tp(db, t_fail_syanna, p_syanna_dead)
+
+    p_vineyard_restored = upsert_place(db, "corvo_bianco_restored", "Corvo Bianco restored",
+                                       "Upgraded the vineyard estate.")
+    t_upgrade_vineyard = upsert_transition(db, "upgrade_vineyard", "Upgrade Corvo Bianco",
+                                           "Invest in Corvo Bianco renovations.")
+    add_arc_pt(db, p_baw_active, t_upgrade_vineyard);   add_arc_tp(db, t_upgrade_vineyard, p_vineyard_restored)
 
     # === Example “level / item” status nodes (useful for FAQs/puzzles) ===
     p_level16plus = upsert_place(db, "level_16_plus", "Character Level ≥ 16",
@@ -287,6 +541,11 @@ def seed_documents(db: Session):
          "Refusing leads to darker outcomes and fewer allies.",
          "novigrad_mainline", "help_triss_escape", {"topic":"faq","spoiler":"medium","consequence":"allies"}),
 
+        ("How do I rescue Dandelion in Novigrad?",
+         "Agree to Roche and Triss's ambush plan during 'A Poet Under Pressure'. Knock riders off the wagon, follow the trail to Temple Isle, "
+         "and cut down the guards to free Dandelion. The rescue unlocks his cabaret storyline and future ally beats.",
+         "dandelion_rescued", "rescue_dandelion", {"topic":"walkthrough","spoiler":"medium","quest":"novigrad"}),
+
         ("Whoreson Junior: spare or kill?",
          "Sparing Whoreson preserves a pitiful version of him and minor later scenes. Killing him removes those scenes. "
          "It has little impact on the grand plot.",
@@ -305,9 +564,14 @@ def seed_documents(db: Session):
          None, "send_keira_to_kaer_morhen", {"topic":"faq","spoiler":"medium","consequence":"allies"}),
 
         ("Battle of Kaer Morhen: how to prepare well",
-         "Recruit as many allies as you can (e.g., Keira, Zoltan, Roche). Upgrade bombs/oils and repair gear. "
+         "Recruit as many allies as you can (Keira, Roche & Ves, Zoltan, Ermion, even Letho if he lives). Upgrade bombs/oils and repair gear. "
          "Complete ‘Ugly Baby’ to unlock preparations. More allies = easier defense.",
-         "battle_of_kaer_morhen", None, {"topic":"howto","spoiler":"medium","consequence":"difficulty"}),
+         "battle_of_kaer_morhen", "sum_allies", {"topic":"howto","spoiler":"medium","consequence":"difficulty"}),
+
+        ("Which allies can join the Battle of Kaer Morhen?",
+         "Keira, Roche & Ves, Zoltan, Ermion, Hjalmar (via Skellige), Letho (if spared), and Triss/Yennefer all contribute. "
+         "Recruit them through their questlines before triggering 'The Isle of Mists'.",
+         "km_allies_boost", "sum_allies", {"topic":"faq","spoiler":"medium","consequence":"allies"}),
 
         # Politics — Radovid/Dijkstra
         ("Should I assassinate Radovid?",
@@ -320,6 +584,11 @@ def seed_documents(db: Session):
          "This choice colors the epilogue but doesn't prevent the main ending path.",
          "final_preparations", "side_with_dijkstra", {"topic":"faq","spoiler":"high","consequence":"world"}),
 
+        ("Who wins the Northern war?",
+         "Kill Radovid and back Roche/Thaler to hand victory to Nilfgaard. Kill Radovid and back Dijkstra to let Redania rebuild. "
+         "Spare Radovid and the war grinds on in a stalemate.",
+         None, "nilfgaard_prevails", {"topic":"faq","spoiler":"high","consequence":"world"}),
+
         # Ciri fate — guidance (no heavy spoilers)
         ("How do my choices influence Ciri’s fate?",
          "Encouraging Ciri (let her decide, support her privately, avoid taking credit or payment on her behalf) "
@@ -330,6 +599,27 @@ def seed_documents(db: Session):
          "High confidence and certain decisions can lead Ciri to a witcher path. If you involve the Emperor and the world "
          "stabilizes under Nilfgaard, she can become Empress. Poor support can lead to a tragic end.",
          "tedd_deireadh", "compute_epilogue", {"topic":"faq","spoiler":"high","consequence":"ending"}),
+
+        # Hearts of Stone
+        ("Should I side with Olgierd or Gaunter O'Dimm?",
+         "Siding with Olgierd means solving Gaunter's riddle and freeing Olgierd, earning his sword and a bittersweet farewell. "
+         "Letting Gaunter win grants a powerful reward but condemns Olgierd.",
+         "hearts_of_stone_active", "side_with_olgierd", {"topic":"faq","spoiler":"high","dlc":"hearts_of_stone"}),
+
+        ("Is the Ofieri runewright worth funding?",
+         "Fully upgrading the runewright unlocks unique enchantments (e.g., Severance, Preservation). It's pricey but great for NG+ or late-game builds.",
+         "runesmith_unlocked", "upgrade_runesmith", {"topic":"faq","spoiler":"medium","dlc":"hearts_of_stone"}),
+
+        # Blood and Wine
+        ("Blood and Wine endings: how do Syanna's choices play out?",
+         "Present Syanna's ribbon in the fairy tale realm and mediate between the sisters to reach the most hopeful ending. "
+         "Fail to reconcile them and Syanna dies, souring Toussaint's future.",
+         "blood_and_wine_active", "redeem_syanna", {"topic":"faq","spoiler":"high","dlc":"blood_and_wine"}),
+
+        ("How do I upgrade Corvo Bianco?",
+         "Talk to the majordomo after inheriting the estate and spend crowns to renovate the house, garden, and armory. "
+         "Upgrades unlock bonus resting buffs and display slots for trophies/armor.",
+         "corvo_bianco_restored", "upgrade_vineyard", {"topic":"howto","spoiler":"low","dlc":"blood_and_wine"}),
 
         # Level & Item (utility)
         ("Recommended level for Novigrad/Skellige arcs?",

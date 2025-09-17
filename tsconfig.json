@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "ES2015",
+    "moduleResolution": "node",
+    "outDir": "src/app/static/dist",
+    "rootDir": "src/app/static",
+    "strict": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true
+  },
+  "include": ["src/app/static/petri.ts"],
+  "exclude": ["node_modules"]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "witcher-petri",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:ts": "tsc --project tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}

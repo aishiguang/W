@@ -4,6 +4,7 @@ fastapi
 uvicorn[standard]
 SQLAlchemy>=2.0
 PyMySQL
+cryptography
 pydantic>=2
 python-dotenv
 numpy

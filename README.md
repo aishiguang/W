@@ -18,7 +18,9 @@ pip install -r requirements.txt
 # 3) Copy .env.example to .env and adjust DATABASE_URL (if needed)
 # 4) Seed the database
 python -m src.app.seed_data
-# next Launch the API
+# next install frontend tooling & launch the API
+# npm install
+# npm run build:ts
 # uvicorn src.app.api:app --reload --port 8000
 ```
 
@@ -30,6 +32,8 @@ python -m src.app.seed_data
 source .venv/bin/activate        # <— mac/linux activate
 
 # 5) (Make sure MySQL and .env are set)
+npm install
+npm run build:ts
 uvicorn src.app.api:app --reload --port 8000
 ```
 
