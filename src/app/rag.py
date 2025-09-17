@@ -6,6 +6,7 @@ import numpy as np
 
 from .models import Document, Embedding, MarkingToken, Place, Transition
 from .petri import bfs_neighborhood
+from .config import settings
 
 # ---------------- Embedding helpers (unchanged) ----------------
 def _cosine(a: np.ndarray, b: np.ndarray) -> float:
@@ -52,12 +53,17 @@ def rerank_with_embeddings(db: Session, query_embedding: np.ndarray, docs: Seque
     return scored
 
 # ---------------- New: seed estimation & Petri-aware context ----------------
-def estimate_seeds_from_query(db: Session, query: str, top_k: int = 5) -> tuple[set[int], set[int]]:
+def estimate_seeds_from_query(
+    db: Session,
+    query: str,
+    top_k: int = 5,
+    base_docs: Sequence[Document] | None = None,
+) -> tuple[set[int], set[int]]:
     """
     Infer relevant place/transition ids from query by looking at top documents and
     harvesting their related nodes.
     """
-    docs = retrieve_candidates(db, query, limit=25)
+    docs = list(base_docs) if base_docs is not None else retrieve_candidates(db, query, limit=25)
     place_votes, trans_votes = {}, {}
     for i, d in enumerate(docs[:top_k]):
         w = 1.0 / (1 + i)  # slightly favor top results
@@ -79,10 +85,14 @@ def estimate_seeds_from_query(db: Session, query: str, top_k: int = 5) -> tuple[
     seed_trans = {tid for tid, _ in sorted(trans_votes.items(), key=lambda kv: kv[1], reverse=True)[:3]}
     # If still empty, default to “start” node if any exists
     if not seed_places and not seed_trans:
-        start = db.scalar(select(Place).where(Place.key == "white_orchard"))
-        if start:
-            seed_places = {start.id}
+        seed_places = _fallback_seed_places(db)
     return seed_places, seed_trans
+
+
+def _fallback_seed_places(db: Session) -> set[int]:
+    """Default to the earliest-seeded place when no signals are present."""
+    first_place = db.scalar(select(Place).order_by(Place.id))
+    return {first_place.id} if first_place else set()
 
 def documents_in_neighborhood(
     db: Session,
@@ -144,8 +154,9 @@ def generate_answer(context_chunks: list[Document], question: str, llm=None) -> 
         "Cite titles inline like [Title].\n\n"
         f"# Question\n{question}\n\n# Context\n{content}\n"
     )
+    model_name = settings.openai_model or "gpt-4o-mini"
     resp = llm.chat.completions.create(
-        model="gpt-4o-mini",
+        model=model_name,
         messages=[{"role":"user", "content":prompt}],
         temperature=0.2,
     )
@@ -163,7 +174,7 @@ def petri_aware_retrieve(
     ft_docs = retrieve_candidates(db, query, limit=25)
 
     # 2) Seed estimation if no explicit marking
-    seed_places, seed_trans = estimate_seeds_from_query(db, query)
+    seed_places, seed_trans = estimate_seeds_from_query(db, query, base_docs=ft_docs)
 
     # 3) Build Petri neighborhood
     dist = bfs_neighborhood(db, seed_places, seed_trans, max_depth=neighborhood_depth)
